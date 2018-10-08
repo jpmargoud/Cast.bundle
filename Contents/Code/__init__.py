@@ -7,8 +7,6 @@
 #
 ############################################################################
 
-# To find Work in progress, search this file for the word
-
 from __future__ import print_function
 
 import StringIO
@@ -84,12 +82,9 @@ path = None
 
 NAME = 'Flex TV'
 VERSION = '1.1.106'
-PREFIX = '/applications/Cast'
-PREFIX2 = '/chromecast'
-APP = '/chromecast'
-STATPREFIX = '/applications/stats'
-STATPREFIX2 = '/stats'
-STATAPP = '/stats'
+APP_PREFIX = '/applications/Cast'
+CAST_PREFIX = '/chromecast'
+STAT_PREFIX = '/stats'
 ICON = 'flextv.png'
 ICON_CAST = 'icon-cast.png'
 ICON_CAST_AUDIO = 'icon-cast_audio.png'
@@ -143,12 +138,10 @@ def UpdateCache():
     scan_devices()
 
 
-@handler(PREFIX, NAME)
-@handler(PREFIX2, NAME)
-@handler(STATPREFIX, NAME)
-@handler(STATPREFIX2, NAME)
-@route(PREFIX + '/MainMenu')
-@route(PREFIX2)
+@handler(APP_PREFIX, NAME)
+@handler(CAST_PREFIX, NAME)
+@handler(STAT_PREFIX, NAME)
+@route(APP_PREFIX + '/MainMenu')
 def MainMenu(Rescanned=False):
     """
     Main menu
@@ -208,7 +201,7 @@ def MainMenu(Rescanned=False):
     return oc
 
 
-@route(PREFIX + '/ValidatePrefs')
+@route(APP_PREFIX + '/ValidatePrefs')
 def ValidatePrefs():
     """
     Called by the framework every time a user changes the prefs
@@ -221,8 +214,10 @@ def ValidatePrefs():
     return
 
 
-@route(APP + '/devices')
-@route(PREFIX2 + '/devices')
+####################################
+# These are our cast endpoints
+@route(APP_PREFIX + '/devices')
+@route(CAST_PREFIX + '/devices')
 def Devices():
     """
 
@@ -241,8 +236,8 @@ def Devices():
     return mc
 
 
-@route(APP + '/clients')
-@route(PREFIX2 + '/clients')
+@route(APP_PREFIX + '/clients')
+@route(CAST_PREFIX + '/clients')
 def Clients():
     """
     Endpoint to scan LAN for cast devices
@@ -259,9 +254,8 @@ def Clients():
     return mc
 
 
-# FOO
-@route(APP + '/resources')
-@route(PREFIX2 + '/resources')
+@route(APP_PREFIX + '/resources')
+@route(CAST_PREFIX + '/resources')
 def Resources():
     """
     Endpoint to scan LAN for cast devices
@@ -298,8 +292,8 @@ def Resources():
     return oc
 
 
-@route(APP + '/rescan')
-@route(PREFIX2 + '/rescan')
+@route(APP_PREFIX + '/rescan')
+@route(CAST_PREFIX + '/rescan')
 def Rescan():
     """
     Endpoint to scan LAN for cast devices
@@ -310,50 +304,295 @@ def Rescan():
     return MainMenu(True)
 
 
-@route(STATAPP + '/tag')
-@route(STATPREFIX2 + '/stats/tag')
+@route(CAST_PREFIX + '/play')
+def Play():
+    """
+    Endpoint to play media.
+    """
+    Log.Debug('Recieved a call to play media.')
+    params = ['Clienturi', 'Contentid', 'Contenttype', 'Serverid', 'Serveruri',
+              'Username', 'Transienttoken', 'Queueid', 'Version', 'Primaryserverid',
+              'Primaryserveruri', 'Primaryservertoken']
+    values = sort_headers(params, False)
+    status = "Missing required headers and stuff"
+    msg = status
+
+    if values is not False:
+        Log.Debug("Holy crap, we have all the headers we need.")
+        client_uri = values['Clienturi'].split(":")
+        host = client_uri[0]
+        port = int(client_uri[1])
+        pc = False
+        msg = "No message received"
+        if 'Serverid' in values:
+            servers = fetch_servers()
+            for server in servers:
+                if server['id'] == values['Serverid']:
+                    Log.Debug("Found a matching server!")
+                    values['Serveruri'] = server['uri']
+                    values['Version'] = server['version']
+
+        try:
+            cast = pychromecast.Chromecast(host, port)
+            cast.wait()
+            values['Type'] = cast.cast_type
+            pc = PlexController(cast)
+            cast.register_handler(pc)
+            Log.Debug("Sending values to play command: " + JSON.StringFromObject(values))
+            pc.play_media(values, log_data)
+        except pychromecast.LaunchError, pychromecast.PyChromecastError:
+            Log.Debug('Error connecting to host.')
+            status = "Error"
+        finally:
+            if pc is not False:
+                status = "Success"
+
+    oc = MediaContainer({
+        'Name': 'Playback Status',
+        'Status': status,
+        'Message': msg
+    })
+
+    return oc
+
+
+@route(CAST_PREFIX + '/cmd')
+def Cmd():
+    """
+    Media control command(s).
+
+    Plex-specific commands use the format:
+
+
+    Required params:
+    Uri
+    Cmd
+    Vol(If setting volume, otherwise, ignored)
+
+    Where <COMMAND> is one of:
+    PLAY (resume)
+    PAUSE
+    STOP
+    STEPFORWARD
+    STEPBACKWARD Need to test, not in PHP cast app)
+    PREVIOUS
+    NEXT
+    MUTE
+    UNMUTE
+    VOLUME - also requires an int representing level from 0-100
+
+    """
+    Log.Debug('Recieved a call to control playback')
+    params = sort_headers(['Uri', 'Cmd', 'Val'], False)
+    status = "Missing paramaters"
+    response = "Error"
+
+    if params is not False:
+        uri = params['Uri'].split(":")
+        cast = pychromecast.Chromecast(uri[0], int(uri[1]))
+        cast.wait()
+        pc = PlexController(cast)
+        Log.Debug("Handler namespace is %s" % pc.namespace)
+        cast.register_handler(pc)
+
+        Log.Debug("Handler namespace is %s" % pc.namespace)
+
+        cmd = params['Cmd']
+        Log.Debug("Command is " + cmd)
+
+        if cmd == "play":
+            pc.play()
+        if cmd == "pause":
+            pc.pause()
+        if cmd == "stop":
+            pc.stop()
+        if cmd == "next":
+            pc.next()
+        if (cmd == "offset") & ('Val' in params):
+            pc.seek(params["Val"])
+        if cmd == "previous":
+            pc.previous()
+        if cmd == "volume.mute":
+            pc.mute(True)
+        if cmd == "volume.unmute":
+            pc.mute(False)
+        if (cmd == "volume") & ('Val' in params):
+            pc.set_volume(params["Val"])
+        if cmd == "volume.down":
+            pc.volume_down()
+        if cmd == "volume.up":
+            pc.volume_up()
+
+        cast.disconnect()
+        response = "Command successful"
+
+    oc = ObjectContainer(
+        title1=response,
+        title2=status,
+        no_cache=True,
+        no_history=True)
+    return oc
+
+
+@route(CAST_PREFIX + '/audio')
+def Audio():
+    """
+    Endpoint to cast audio to a specific device.
+    """
+
+    Log.Debug('Recieved a call to play an audio clip.')
+    params = ['Uri', 'Path']
+    values = sort_headers(params, True)
+    status = "Missing required headers"
+    if values is not False:
+        Log.Debug("Holy crap, we have all the headers we need.")
+        client_uri = values['Uri'].split(":")
+        host = client_uri[0]
+        port = int(client_uri[1])
+        path = values['Path']
+        try:
+            cast = pychromecast.Chromecast(host, port)
+            cast.wait()
+            mc = cast.media_controller
+            mc.play_media(path, 'audio/mp3', )
+        except pychromecast.LaunchError, pychromecast.PyChromecastError:
+            Log.Debug('Error connecting to host.')
+        finally:
+            Log.Debug("We have a cast")
+            status = "Playback successful"
+
+    oc = ObjectContainer(
+        title1=status,
+        no_cache=True,
+        no_history=True)
+
+    return oc
+
+
+@route(CAST_PREFIX + '/broadcast/test')
+def Test():
+    values = {'Path': R(TEST_CLIP)}
+    casts = fetch_devices()
+    status = "Test successful!"
+    try:
+        for cast in casts:
+            if cast['type'] == "audio":
+                mc = MediaController()
+                Log.Debug("We should be broadcasting to " + cast['name'])
+                uri = cast['uri'].split(":")
+                cast = pychromecast.Chromecast(uri[0], int(uri[1]))
+                cast.wait()
+                cast.register_handler(mc)
+                mc.play_media(values['Path'], 'audio/mp3')
+
+    except pychromecast.LaunchError, pychromecast.PyChromecastError:
+        Log.Debug('Error connecting to host.')
+        status = "Test failed!"
+    finally:
+        Log.Debug("We have a cast")
+
+    oc = ObjectContainer(
+        title1=status,
+        no_cache=True,
+        no_history=True)
+
+    return oc
+
+
+@route(CAST_PREFIX + '/broadcast')
+def Broadcast():
+    """
+    Send audio to *all* cast devices on the network
+    """
+    Log.Debug('Recieved a call to broadcast an audio clip.')
+    params = ['Path']
+    values = sort_headers(params, True)
+    status = "No clip specified"
+    if values is not False:
+        do = False
+        casts = fetch_devices()
+        disconnect = []
+        controllers = []
+        try:
+            for cast in casts:
+                if cast['type'] == "audio":
+                    mc = MediaController()
+                    Log.Debug("We should be broadcasting to " + cast['name'])
+                    uri = cast['uri'].split(":")
+                    cast = pychromecast.Chromecast(uri[0], int(uri[1]))
+                    cast.wait()
+                    cast.register_handler(mc)
+                    controllers.append(mc)
+                    disconnect.append(cast)
+
+            for mc in controllers:
+                mc.play_media(values['Path'], 'audio/mp3', )
+
+        except pychromecast.LaunchError, pychromecast.PyChromecastError:
+            Log.Debug('Error connecting to host.')
+        finally:
+            for cast in disconnect:
+                cast.disconnect()
+            Log.Debug("We have a cast")
+
+    else:
+        do = DirectoryObject(
+            title='Test Broadcast',
+            tagline="Send a test broadcast to audio devices.",
+            key=Callback(Test))
+        status = "Foo"
+
+    oc = ObjectContainer(
+        title1=status,
+        no_cache=True,
+        no_history=True)
+
+    if do is not False:
+        oc.add(do)
+
+    return oc
+
+
+####################################
+# These are our /stat prefixes
+@route(STAT_PREFIX + '/tag')
 def All():
     mc = build_tag_container("all")
     return mc
 
 
-@route(STATAPP + '/tag/actor')
-@route(STATPREFIX2 + '/stats/tag/actor')
+@route(STAT_PREFIX + '/tag/actor')
 def Actor():
     mc = build_tag_container("actor")
     return mc
 
 
-@route(STATAPP + '/tag/director')
-@route(STATPREFIX2 + '/stats/tag/director')
+@route(STAT_PREFIX + '/tag/director')
 def Director():
     mc = build_tag_container("director")
     return mc
 
 
-@route(STATAPP + '/tag/writer')
-@route(STATPREFIX2 + '/stats/tag/writer')
+@route(STAT_PREFIX + '/tag/writer')
 def Writer():
     mc = build_tag_container("writer")
     return mc
 
 
-@route(STATAPP + '/tag/genre')
-@route(STATPREFIX2 + '/stats/tag/genre')
+@route(STAT_PREFIX + '/tag/genre')
 def Genre():
     mc = build_tag_container("genre")
     return mc
 
 
-@route(STATAPP + '/library')
-@route(STATPREFIX2 + '/stats/library')
+@route(STAT_PREFIX + '/library')
 def Library():
     mc = MediaContainer()
     headers = sort_headers(["Container-Size", "Type"])
     Log.Debug("Here's where we fetch some library stats.")
     sections = {}
     recs = query_library_stats(headers)
-    sizes = get_library_sizes()
+    sizes = query_library_sizes()
     records = recs[0]
     sec_counts = recs[1]
     for record in records:
@@ -438,8 +677,7 @@ def Library():
     return mc
 
 
-@route(STATAPP + '/library/growth')
-@route(STATPREFIX2 + '/stats/library/growth')
+@route(STAT_PREFIX + '/library/growth')
 def Growth():
     headers = sort_headers(["Interval", "Start", "End", "Container-Size", "Container-Start", "Type"])
     records = query_library_growth(headers)
@@ -517,8 +755,7 @@ def Growth():
     return mc
 
 
-@route(STATAPP + '/user')
-@route(STATPREFIX2 + '/stats/user')
+@route(STAT_PREFIX + '/user')
 def User():
     mc = MediaContainer()
     headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
@@ -577,8 +814,11 @@ def User():
     return mc
 
 
-@route(PREFIX + '/logs')
-@route(PREFIX2 + '/logs')
+####################################
+# Finally, utility prefixes (logs, restart)
+@route(APP_PREFIX + '/logs')
+@route(CAST_PREFIX + '/logs')
+@route(STAT_PREFIX + '/logs')
 def DownloadLogs():
     buff = StringIO.StringIO()
     zip_archive = ZipFile(buff, mode='w', compression=ZIP_DEFLATED)
@@ -603,260 +843,7 @@ def DownloadLogs():
         view_group="Details")
 
 
-@route(APP + '/play')
-def Play():
-    """
-    Endpoint to play media.
-    """
-    Log.Debug('Recieved a call to play media.')
-    params = ['Clienturi', 'Contentid', 'Contenttype', 'Serverid', 'Serveruri',
-              'Username', 'Transienttoken', 'Queueid', 'Version', 'Primaryserverid',
-              'Primaryserveruri', 'Primaryservertoken']
-    values = sort_headers(params, False)
-    status = "Missing required headers and stuff"
-    msg = status
-
-    if values is not False:
-        Log.Debug("Holy crap, we have all the headers we need.")
-        client_uri = values['Clienturi'].split(":")
-        host = client_uri[0]
-        port = int(client_uri[1])
-        pc = False
-        msg = "No message received"
-        if 'Serverid' in values:
-            servers = fetch_servers()
-            for server in servers:
-                if server['id'] == values['Serverid']:
-                    Log.Debug("Found a matching server!")
-                    values['Serveruri'] = server['uri']
-                    values['Version'] = server['version']
-
-        try:
-            cast = pychromecast.Chromecast(host, port)
-            cast.wait()
-            values['Type'] = cast.cast_type
-            pc = PlexController(cast)
-            cast.register_handler(pc)
-            Log.Debug("Sending values to play command: " + JSON.StringFromObject(values))
-            pc.play_media(values, log_data)
-        except pychromecast.LaunchError, pychromecast.PyChromecastError:
-            Log.Debug('Error connecting to host.')
-            status = "Error"
-        finally:
-            if pc is not False:
-                status = "Success"
-
-    oc = MediaContainer({
-        'Name': 'Playback Status',
-        'Status': status,
-        'Message': msg
-    })
-
-    return oc
-
-
-def log_data(data):
-    Log.Debug("Is there data?? " + JSON.StringFromObject(data))
-
-
-@route(APP + '/cmd')
-def Cmd():
-    """
-    Media control command(s).
-
-    Plex-specific commands use the format:
-
-
-    Required params:
-    Uri
-    Cmd
-    Vol(If setting volume, otherwise, ignored)
-
-    Where <COMMAND> is one of:
-    PLAY (resume)
-    PAUSE
-    STOP
-    STEPFORWARD
-    STEPBACKWARD Need to test, not in PHP cast app)
-    PREVIOUS
-    NEXT
-    MUTE
-    UNMUTE
-    VOLUME - also requires an int representing level from 0-100
-
-    """
-    Log.Debug('Recieved a call to control playback')
-    params = sort_headers(['Uri', 'Cmd', 'Val'], False)
-    status = "Missing paramaters"
-    response = "Error"
-
-    if params is not False:
-        uri = params['Uri'].split(":")
-        cast = pychromecast.Chromecast(uri[0], int(uri[1]))
-        cast.wait()
-        pc = PlexController(cast)
-        Log.Debug("Handler namespace is %s" % pc.namespace)
-        cast.register_handler(pc)
-
-        Log.Debug("Handler namespace is %s" % pc.namespace)
-
-        cmd = params['Cmd']
-        Log.Debug("Command is " + cmd)
-
-        if cmd == "play":
-            pc.play()
-        if cmd == "pause":
-            pc.pause()
-        if cmd == "stop":
-            pc.stop()
-        if cmd == "next":
-            pc.next()
-        if (cmd == "offset") & ('Val' in params):
-            pc.seek(params["Val"])
-        if cmd == "previous":
-            pc.previous()
-        if cmd == "volume.mute":
-            pc.mute(True)
-        if cmd == "volume.unmute":
-            pc.mute(False)
-        if (cmd == "volume") & ('Val' in params):
-            pc.set_volume(params["Val"])
-        if cmd == "volume.down":
-            pc.volume_down()
-        if cmd == "volume.up":
-            pc.volume_up()
-
-        cast.disconnect()
-        response = "Command successful"
-
-    oc = ObjectContainer(
-        title1=response,
-        title2=status,
-        no_cache=True,
-        no_history=True)
-    return oc
-
-
-@route(APP + '/audio')
-def Audio():
-    """
-    Endpoint to cast audio to a specific device.
-    """
-
-    Log.Debug('Recieved a call to play an audio clip.')
-    params = ['Uri', 'Path']
-    values = sort_headers(params, True)
-    status = "Missing required headers"
-    if values is not False:
-        Log.Debug("Holy crap, we have all the headers we need.")
-        client_uri = values['Uri'].split(":")
-        host = client_uri[0]
-        port = int(client_uri[1])
-        path = values['Path']
-        try:
-            cast = pychromecast.Chromecast(host, port)
-            cast.wait()
-            mc = cast.media_controller
-            mc.play_media(path, 'audio/mp3', )
-        except pychromecast.LaunchError, pychromecast.PyChromecastError:
-            Log.Debug('Error connecting to host.')
-        finally:
-            Log.Debug("We have a cast")
-            status = "Playback successful"
-
-    oc = ObjectContainer(
-        title1=status,
-        no_cache=True,
-        no_history=True)
-
-    return oc
-
-
-@route(APP + '/broadcast/test')
-def Test():
-    values = {'Path': R(TEST_CLIP)}
-    casts = fetch_devices()
-    status = "Test successful!"
-    try:
-        for cast in casts:
-            if cast['type'] == "audio":
-                mc = MediaController()
-                Log.Debug("We should be broadcasting to " + cast['name'])
-                uri = cast['uri'].split(":")
-                cast = pychromecast.Chromecast(uri[0], int(uri[1]))
-                cast.wait()
-                cast.register_handler(mc)
-                mc.play_media(values['Path'], 'audio/mp3')
-
-    except pychromecast.LaunchError, pychromecast.PyChromecastError:
-        Log.Debug('Error connecting to host.')
-        status = "Test failed!"
-    finally:
-        Log.Debug("We have a cast")
-
-    oc = ObjectContainer(
-        title1=status,
-        no_cache=True,
-        no_history=True)
-
-    return oc
-
-
-@route(APP + '/broadcast')
-def Broadcast():
-    """
-    Send audio to *all* cast devices on the network
-    """
-    Log.Debug('Recieved a call to broadcast an audio clip.')
-    params = ['Path']
-    values = sort_headers(params, True)
-    status = "No clip specified"
-    if values is not False:
-        do = False
-        casts = fetch_devices()
-        disconnect = []
-        controllers = []
-        try:
-            for cast in casts:
-                if cast['type'] == "audio":
-                    mc = MediaController()
-                    Log.Debug("We should be broadcasting to " + cast['name'])
-                    uri = cast['uri'].split(":")
-                    cast = pychromecast.Chromecast(uri[0], int(uri[1]))
-                    cast.wait()
-                    cast.register_handler(mc)
-                    controllers.append(mc)
-                    disconnect.append(cast)
-
-            for mc in controllers:
-                mc.play_media(values['Path'], 'audio/mp3', )
-
-        except pychromecast.LaunchError, pychromecast.PyChromecastError:
-            Log.Debug('Error connecting to host.')
-        finally:
-            for cast in disconnect:
-                cast.disconnect()
-            Log.Debug("We have a cast")
-
-    else:
-        do = DirectoryObject(
-            title='Test Broadcast',
-            tagline="Send a test broadcast to audio devices.",
-            key=Callback(Test))
-        status = "Foo"
-
-    oc = ObjectContainer(
-        title1=status,
-        no_cache=True,
-        no_history=True)
-
-    if do is not False:
-        oc.add(do)
-
-    return oc
-
-
-@route(APP + '/statmenu')
+@route(APP_PREFIX + '/statmenu')
 def Statmenu():
     Log.Debug("Building stats menu.")
     oc = ObjectContainer(
@@ -873,8 +860,8 @@ def Statmenu():
     return oc
 
 
-@route(APP + '/status')
-@route(PREFIX2 + '/resources/status')
+@route(CAST_PREFIX + '/status')
+@route(CAST_PREFIX + '/resources/status')
 def Status(input_name=False):
     """
     Fetch player status
@@ -960,6 +947,61 @@ def Status(input_name=False):
     return do
 
 
+@route(APP_PREFIX + '/advanced')
+def AdvancedMenu(header=None, message=None):
+    oc = ObjectContainer(header=header or "Internal stuff, pay attention!", message=message, no_cache=True,
+                         no_history=True,
+                         replace_parent=False, title2="Advanced")
+
+    oc.add(DirectoryObject(
+        key=Callback(TriggerRestart),
+        title="Restart the plugin",
+    ))
+
+    return oc
+
+
+@route(APP_PREFIX + '/advanced/restart/trigger')
+def TriggerRestart():
+    DispatchRestart()
+    oc = ObjectContainer(
+        title1="restarting",
+        no_cache=True,
+        no_history=True,
+        title_bar="Chromecast",
+        view_group="Details")
+
+    do = DirectoryObject(
+        title="Rescan Devices",
+        thumb=R(ICON_CAST_REFRESH),
+        key=Callback(Rescan))
+
+    oc.add(do)
+
+    do = DirectoryObject(
+        title="Devices",
+        thumb=R(ICON_CAST),
+        key=Callback(Resources))
+
+    oc.add(do)
+
+    do = DirectoryObject(
+        title="Broadcast",
+        thumb=R(ICON_CAST_AUDIO),
+        key=Callback(Broadcast))
+
+    oc.add(do)
+
+    return oc
+
+
+@route(APP_PREFIX + '/advanced/restart/execute')
+def Restart():
+    Plex[":/plugins"].restart(PLUGIN_IDENTIFIER)
+
+
+####################################
+# These functions are for cast-related stuff
 def fetch_devices():
     if not Data.Exists('device_json'):
         Log.Debug("No cached data exists, re-scanning.")
@@ -1045,10 +1087,6 @@ def fetch_servers():
     return servers
 
 
-# Scan our devices and save them to cache.
-# This should NEVER be called from an endpoint...we don't have the time
-# Foooo
-
 def scan_devices():
     Log.Debug("Re-fetching devices")
     casts = pychromecast.get_chromecasts(1, None, None, True)
@@ -1092,36 +1130,6 @@ def scan_devices():
     last_scan = "Last Scan: " + time.strftime("%B %d %Y - %H:%M")
     Data.Save('last_scan', last_scan)
     return data_array
-
-
-def getTimeDifferenceFromNow(time_start, time_end):
-    time_diff = time_end - time_start
-    return time_diff.total_seconds() / 60
-
-
-def sort_headers(header_list, strict=False):
-    returns = {}
-    for key, value in Request.Headers.items():
-        Log.Debug("Header key %s is %s", key, value)
-        for item in header_list:
-            if key in ("X-Plex-" + item, item):
-                Log.Debug("We have a " + item)
-                returns[item] = unicode(value)
-                header_list.remove(item)
-
-    if strict:
-        len2 = len(header_list)
-        if len2 == 0:
-            Log.Debug("We have all of our values: " + JSON.StringFromObject(returns))
-            return returns
-
-        else:
-            Log.Error("Sorry, parameters are missing.")
-            for item in header_list:
-                Log.Error("Missing " + item)
-            return False
-    else:
-        return returns
 
 
 def player_string(values):
@@ -1180,130 +1188,8 @@ def player_string(values):
     return request_array
 
 
-def get_log_paths():
-    # find log handler
-    server_log_path = False
-    plugin_log_path = False
-    for handler in Core.log.handlers:
-        if getattr(getattr(handler, "__class__"), "__name__") in (
-                'FileHandler', 'RotatingFileHandler', 'TimedRotatingFileHandler'):
-            plugin_log_file = handler.baseFilename
-            if os.path.isfile(os.path.realpath(plugin_log_file)):
-                plugin_log_path = plugin_log_file
-                Log.Debug("Found a plugin path: " + plugin_log_path)
-
-            if plugin_log_file:
-                server_log_file = os.path.realpath(os.path.join(plugin_log_file, "../../Plex Media Server.log"))
-                if os.path.isfile(server_log_file):
-                    server_log_path = server_log_file
-                    Log.Debug("Found a server log path: " + server_log_path)
-
-    return [plugin_log_path, server_log_path]
-
-
-# These routes build a menu and let us snag the logs, as well as trigger restarts
-@route(PREFIX2 + '/advanced')
-def AdvancedMenu(header=None, message=None):
-    oc = ObjectContainer(header=header or "Internal stuff, pay attention!", message=message, no_cache=True,
-                         no_history=True,
-                         replace_parent=False, title2="Advanced")
-
-    oc.add(DirectoryObject(
-        key=Callback(TriggerRestart),
-        title="Restart the plugin",
-    ))
-
-    return oc
-
-
-def DispatchRestart():
-    Thread.CreateTimer(1.0, Restart)
-
-
-@route(PREFIX2 + '/advanced/restart/trigger')
-def TriggerRestart():
-    DispatchRestart()
-    oc = ObjectContainer(
-        title1="restarting",
-        no_cache=True,
-        no_history=True,
-        title_bar="Chromecast",
-        view_group="Details")
-
-    do = DirectoryObject(
-        title="Rescan Devices",
-        thumb=R(ICON_CAST_REFRESH),
-        key=Callback(Rescan))
-
-    oc.add(do)
-
-    do = DirectoryObject(
-        title="Devices",
-        thumb=R(ICON_CAST),
-        key=Callback(Resources))
-
-    oc.add(do)
-
-    do = DirectoryObject(
-        title="Broadcast",
-        thumb=R(ICON_CAST_AUDIO),
-        key=Callback(Broadcast))
-
-    oc.add(do)
-
-    return oc
-
-
-@route(PREFIX2 + '/advanced/restart/execute')
-def Restart():
-    Plex[":/plugins"].restart(PLUGIN_IDENTIFIER)
-
-
-def sort_headers(header_list, strict=False):
-    returns = {}
-    for key, value in Request.Headers.items():
-        Log.Debug("Header key %s is %s", key, value)
-        for item in header_list:
-            if key in ("X-Plex-" + item, item):
-                Log.Debug("We have a " + item)
-                value = unicode(value)
-                is_int = False
-                try:
-                    test = int(value)
-                    is_int = True
-                except ValueError:
-                    Log.Debug("Value is not a string")
-                    pass
-                else:
-                    value = test
-
-                if not is_int:
-                    try:
-                        value = value.split(",")
-                    except ValueError:
-                        Log.Debug("Value is not a csv")
-                        pass
-                    else:
-                        Log.Debug("Value is a csv!")
-
-                returns[item] = value
-                header_list.remove(item)
-
-    if strict:
-        len2 = len(header_list)
-        if len2 == 0:
-            Log.Debug("We have all of our values: " + JSON.StringFromObject(returns))
-            return returns
-
-        else:
-            Log.Error("Sorry, parameters are missing.")
-            for item in header_list:
-                Log.Error("Missing " + item)
-            return False
-    else:
-        return returns
-
-
+####################################
+# These functions are for stats stuff
 def build_tag_container(tag_type):
     selection = tag_type
     headers = sort_headers(["Container-Start", "Container-Size"])
@@ -1317,7 +1203,7 @@ def build_tag_container(tag_type):
     return mc
 
 
-def get_library_sizes():
+def query_library_sizes():
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
@@ -1340,7 +1226,6 @@ def get_library_sizes():
         close_connection(connection)
 
     return results
-
 
 
 def query_tag_stats(selection, headers):
@@ -1865,15 +1750,6 @@ def query_library_growth(headers):
     return results
 
 
-def validate_date(date_text, date_format):
-    try:
-        datetime.datetime.strptime(date_text, date_format)
-        return True
-    except ValueError:
-        Log.Error("Incorrect date format, should be %s" % date_format)
-        return False
-
-
 def fetch_cursor():
     cursor = None
     connection = None
@@ -1967,6 +1843,7 @@ def insert_architecture_paths(libraries_path, system, architecture):
 
     if not os.path.exists(architecture_path):
         Log.Debug("Arch path %s doesn't exist!!" % architecture_path)
+        Log.Debug("Stats for path? %s" % os.stat(architecture_path))
         return False
 
     # Architecture libraries
@@ -2077,3 +1954,93 @@ def get_entitlements():
         Log.Debug("No keys, try again.")
 
     return allowed_keys
+
+
+####################################
+# These functions are for utility stuff
+def get_time_difference(time_start, time_end):
+    time_diff = time_end - time_start
+    return time_diff.total_seconds() / 60
+
+
+def sort_headers(header_list, strict=False):
+    returns = {}
+    for key, value in Request.Headers.items():
+        Log.Debug("Header key %s is %s", key, value)
+        for item in header_list:
+            if key in ("X-Plex-" + item, item):
+                Log.Debug("We have a " + item)
+                value = unicode(value)
+                is_int = False
+                try:
+                    test = int(value)
+                    is_int = True
+                except ValueError:
+                    Log.Debug("Value is not a string")
+                    pass
+                else:
+                    value = test
+
+                if not is_int:
+                    try:
+                        value = value.split(",")
+                    except ValueError:
+                        Log.Debug("Value is not a csv")
+                        pass
+                    else:
+                        Log.Debug("Value is a csv!")
+
+                returns[item] = value
+                header_list.remove(item)
+
+    if strict:
+        len2 = len(header_list)
+        if len2 == 0:
+            Log.Debug("We have all of our values: " + JSON.StringFromObject(returns))
+            return returns
+
+        else:
+            Log.Error("Sorry, parameters are missing.")
+            for item in header_list:
+                Log.Error("Missing " + item)
+            return False
+    else:
+        return returns
+
+
+def get_log_paths():
+    # find log handler
+    server_log_path = False
+    plugin_log_path = False
+    for handler in Core.log.handlers:
+        if getattr(getattr(handler, "__class__"), "__name__") in (
+                'FileHandler', 'RotatingFileHandler', 'TimedRotatingFileHandler'):
+            plugin_log_file = handler.baseFilename
+            if os.path.isfile(os.path.realpath(plugin_log_file)):
+                plugin_log_path = plugin_log_file
+                Log.Debug("Found a plugin path: " + plugin_log_path)
+
+            if plugin_log_file:
+                server_log_file = os.path.realpath(os.path.join(plugin_log_file, "../../Plex Media Server.log"))
+                if os.path.isfile(server_log_file):
+                    server_log_path = server_log_file
+                    Log.Debug("Found a server log path: " + server_log_path)
+
+    return [plugin_log_path, server_log_path]
+
+
+def log_data(data):
+    Log.Debug("Is there data?? " + JSON.StringFromObject(data))
+
+
+def DispatchRestart():
+    Thread.CreateTimer(1.0, Restart)
+
+
+def validate_date(date_text, date_format):
+    try:
+        datetime.datetime.strptime(date_text, date_format)
+        return True
+    except ValueError:
+        Log.Error("Incorrect date format, should be %s" % date_format)
+        return False
