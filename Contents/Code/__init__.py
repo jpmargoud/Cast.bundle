@@ -1196,13 +1196,16 @@ def build_tag_container(tag_type):
     selection = tag_type
     headers = sort_headers(["Container-Start", "Container-Size"])
     records = query_tag_stats(selection, headers)
-    mc = MediaContainer()
-    if records is not None:
-        for record in records:
-            sc = StatContainer(record)
-            mc.add(sc)
+    if os.environ['ENC_TYPE'] == 'json':
+        return records
+    else:
+        mc = MediaContainer()
+        if records is not None:
+            for record in records:
+                sc = FlexContainer("Tag", record)
+                mc.add(sc)
 
-    return mc
+        return mc
 
 
 def query_library_sizes():
@@ -1968,6 +1971,12 @@ def sort_headers(header_list, strict=False):
     returns = {}
     for key, value in Request.Headers.items():
         Log.Debug("Header key %s is %s", key, value)
+        if key == "Accept":
+            if value == "application/json":
+                os.environ['ENC_TYPE'] = "json"
+            else:
+                os.environ['ENC_TYPE'] = "xml"
+
         for item in header_list:
             if key in ("X-Plex-" + item, item):
                 Log.Debug("We have a " + item)
