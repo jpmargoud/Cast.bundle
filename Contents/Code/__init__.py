@@ -590,6 +590,7 @@ def Genre():
 @route(STAT_PREFIX + '/library')
 def Library():
     mc = MediaContainer()
+    mi = []
     headers = sort_headers(["Container-Size", "Type"])
     Log.Debug("Here's where we fetch some library stats.")
     sections = {}
@@ -635,6 +636,7 @@ def Library():
                 "totalItems": record["totalItems"]
             }
             vc = AnyContainer(record_data, item_type, False)
+            jc = {item_type: record_data}
 
             if record["lastViewedAt"] is not None:
                 last_item = {
@@ -649,8 +651,13 @@ def Library():
                 }
                 li = AnyContainer(last_item, "lastViewed", False)
                 vc.add(li)
+                if os.environ['ENC_TYPE'] == 'json':
+                    jc[item_type]['lastItem'] = last_item
 
-            section_children.append(vc)
+            if os.environ['ENC_TYPE'] == 'json':
+                section_children.append(jc)
+            else:
+                section_children.append(vc)
 
         section_data = {
             "title": name,
@@ -671,12 +678,21 @@ def Library():
             Log.Debug("Hey, we got the unique count")
             section_data["watchedItems"] = sec_unique_played["viewedItems"]
         ac = AnyContainer(section_data, "Section", "False")
+        bc = section_data
+        bc["Sections"] = section_children
         for child in section_children:
-            ac.add(child)
+            if os.environ['ENC_TYPE'] != 'json':
+                ac.add(child)
 
-        mc.add(ac)
+        if os.environ['ENC_TYPE'] == 'json':
+            mi.append(bc)
+        else:
+            mc.add(ac)
 
-    return mc
+    if os.environ['ENC_TYPE'] == 'json':
+        return mi
+    else:
+        return mc
 
 
 @route(STAT_PREFIX + '/library/growth')
