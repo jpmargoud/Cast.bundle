@@ -759,61 +759,67 @@ def Growth():
 
 @route(STAT_PREFIX + '/user')
 def User():
-    mc = MediaContainer()
     headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
     container_start = int(headers.get("Container-Start") or DEFAULT_CONTAINER_START)
     container_size = int(headers.get("Container-Size") or DEFAULT_CONTAINER_SIZE)
     container_max = container_start + container_size
     users_data = query_user_stats(headers)
 
-    if users_data is not None:
-        users = users_data[0]
-        devices = users_data[1]
-        device_names = []
-        for user, records in users.items():
-            last_active = datetime.datetime.strptime("1900-01-01 00:00:00", DATE_STRUCTURE)
-            uc = FlexContainer("User", {"userName": user}, False)
-            sc = FlexContainer("Views")
-            i = 0
-            for record in records:
-                viewed_at = datetime.datetime.fromtimestamp(record["lastViewedAt"])
-                if viewed_at > last_active:
-                    last_active = viewed_at
-                if i >= container_max:
-                    break
-                if i >= container_start:
-                    vc = FlexContainer("View", record, False)
-                    if "deviceName" in record:
-                        if record["deviceName"] not in device_names:
-                            device_names.append(record["deviceName"])
-                    sc.add(vc)
-            uc.add(sc)
-            uc.set("lastSeen", last_active)
-            dp = FlexContainer("Devices", None, False)
-            chrome_data = None
-            for device in devices:
-                if device["userName"] == user:
-                    if device["deviceName"] in device_names:
-                        if device["deviceName"] != "Chrome":
-                            Log.Debug("Found a device for %s" % user)
-                            dc = FlexContainer("Device", device)
-                            dp.add(dc)
-                        else:
-                            chrome_bytes = 0
-                            if chrome_data is None:
-                                chrome_data = device
+    if os.environ['ENC_TYPE'] == 'json':
+        Log.Debug("Returning JSON data")
+        return users_data
+
+    else:
+        Log.Debug("Returning XML")
+        mc = MediaContainer()
+        if users_data is not None:
+            users = users_data[0]
+            devices = users_data[1]
+            device_names = []
+            for user, records in users.items():
+                last_active = datetime.datetime.strptime("1900-01-01 00:00:00", DATE_STRUCTURE)
+                uc = FlexContainer("User", {"userName": user}, False)
+                sc = FlexContainer("Views")
+                i = 0
+                for record in records:
+                    viewed_at = datetime.datetime.fromtimestamp(record["lastViewedAt"])
+                    if viewed_at > last_active:
+                        last_active = viewed_at
+                    if i >= container_max:
+                        break
+                    if i >= container_start:
+                        vc = FlexContainer("View", record, False)
+                        if "deviceName" in record:
+                            if record["deviceName"] not in device_names:
+                                device_names.append(record["deviceName"])
+                        sc.add(vc)
+                uc.add(sc)
+                uc.set("lastSeen", last_active)
+                dp = FlexContainer("Devices", None, False)
+                chrome_data = None
+                for device in devices:
+                    if device["userName"] == user:
+                        if device["deviceName"] in device_names:
+                            if device["deviceName"] != "Chrome":
+                                Log.Debug("Found a device for %s" % user)
+                                dc = FlexContainer("Device", device)
+                                dp.add(dc)
                             else:
-                                chrome_bytes = device["totalBytes"] + chrome_data.get("totalBytes") or 0
-                            chrome_data["totalBytes"] = chrome_bytes
-            if chrome_data is not None:
-                dc = FlexContainer("Device", chrome_data)
-                dp.add(dc)
-            uc.add(dp)
-            mc.add(uc)
+                                chrome_bytes = 0
+                                if chrome_data is None:
+                                    chrome_data = device
+                                else:
+                                    chrome_bytes = device["totalBytes"] + chrome_data.get("totalBytes") or 0
+                                chrome_data["totalBytes"] = chrome_bytes
+                if chrome_data is not None:
+                    dc = FlexContainer("Device", chrome_data)
+                    dp.add(dc)
+                uc.add(dp)
+                mc.add(uc)
 
-    Log.Debug("Still alive, returning data")
+        Log.Debug("Still alive, returning data")
 
-    return mc
+        return mc
 
 
 ####################################
