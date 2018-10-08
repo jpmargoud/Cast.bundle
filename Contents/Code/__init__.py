@@ -90,7 +90,7 @@ APP = '/chromecast'
 STATPREFIX = '/applications/stats'
 STATPREFIX2 = '/stats'
 STATAPP = '/stats'
-ICON = 'icon-cast.png'
+ICON = 'flextv.png'
 ICON_CAST = 'icon-cast.png'
 ICON_CAST_AUDIO = 'icon-cast_audio.png'
 ICON_CAST_VIDEO = 'icon-cast_video.png'
@@ -195,6 +195,13 @@ def MainMenu(Rescanned=False):
         title="Broadcast",
         thumb=R(ICON_CAST_AUDIO),
         key=Callback(Broadcast))
+
+    oc.add(do)
+
+    do = DirectoryObject(
+        title="Stats",
+        thumb=R(ICON_PLEX_CLIENT),
+        key=Callback(Statmenu))
 
     oc.add(do)
 
@@ -846,6 +853,23 @@ def Broadcast():
     if do is not False:
         oc.add(do)
 
+    return oc
+
+
+@route(APP + '/statmenu')
+def Statmenu():
+    Log.Debug("Building stats menu.")
+    oc = ObjectContainer(
+        no_cache=True,
+        no_history=True,
+        view_group="Details")
+
+    do = DirectoryObject(
+        title="Library",
+        thumb=R(ICON_CAST_AUDIO),
+        key=Callback(Library))
+
+    oc.add(do)
     return oc
 
 
@@ -1942,7 +1966,7 @@ def insert_architecture_paths(libraries_path, system, architecture):
     architecture_path = os.path.join(libraries_path, system, architecture)
 
     if not os.path.exists(architecture_path):
-        Log.Debug("Arch path doesn't exist!!")
+        Log.Debug("Arch path %s doesn't exist!!" % architecture_path)
         return False
 
     # Architecture libraries
