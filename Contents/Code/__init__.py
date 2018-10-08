@@ -1105,26 +1105,26 @@ def scan_devices():
         data_array.append(cast_item)
 
     Log.Debug("Cast length is %s", str(len(data_array)))
-    if len(data_array) == 0:
-        if Data.Exists('restarts') is not True:
-            Data.Save('restarts', 1)
-            Log.Debug("No cast devices found, we need to restart the plugin.")
-            DispatchRestart()
-        else:
-            restart_count = Data.Load('restarts')
-            if restart_count >= 5:
-                Log.Debug("It's been an hour, trying to restart the plugin again")
-                Data.Remove('restarts')
-                DispatchRestart()
-            else:
-                Log.Debug("Avoiding a restart in case it's not me, but you.")
-                restart_count += 1
-                Data.Save('restarts', restart_count)
-
-    else:
-        Log.Debug("Okay, we have cast devices, no need to get all postal up in this mutha...")
-        if Data.Exists('restarts'):
-            Data.Remove('restarts')
+    # if len(data_array) == 0:
+    #     if Data.Exists('restarts') is not True:
+    #         Data.Save('restarts', 1)
+    #         Log.Debug("No cast devices found, we need to restart the plugin.")
+    #         DispatchRestart()
+    #     else:
+    #         restart_count = Data.Load('restarts')
+    #         if restart_count >= 5:
+    #             Log.Debug("It's been an hour, trying to restart the plugin again")
+    #             Data.Remove('restarts')
+    #             DispatchRestart()
+    #         else:
+    #             Log.Debug("Avoiding a restart in case it's not me, but you.")
+    #             restart_count += 1
+    #             Data.Save('restarts', restart_count)
+    #
+    # else:
+    #     Log.Debug("Okay, we have cast devices, no need to get all postal up in this mutha...")
+    #     if Data.Exists('restarts'):
+    #         Data.Remove('restarts')
 
     Log.Debug("Item count is " + str(len(data_array)))
     cast_string = JSON.StringFromObject(data_array)
