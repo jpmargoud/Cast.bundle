@@ -103,8 +103,10 @@ def Start():
     libraries_path = os.path.join(pms_path, "Plug-ins", "FlexTV.bundle", "Contents", "Libraries")
     loaded = insert_paths(distribution, libraries_path)
     if loaded:
+        Log.Debug("Paths should be loaded!")
         os.environ["Loaded"] = "True"
     else:
+        Log.Debug("Unable to load paths")
         os.environ["Loaded"] = "False"
     ObjectContainer.title1 = NAME
     DirectoryObject.thumb = R(ICON)
@@ -1843,7 +1845,6 @@ def insert_architecture_paths(libraries_path, system, architecture):
 
     if not os.path.exists(architecture_path):
         Log.Debug("Arch path %s doesn't exist!!" % architecture_path)
-        Log.Debug("Stats for path? %s" % os.stat(architecture_path))
         return False
 
     # Architecture libraries
