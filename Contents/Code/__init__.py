@@ -690,7 +690,7 @@ def Library():
             mc.add(ac)
 
     if os.environ['ENC_TYPE'] == 'json':
-        return mi
+        return JSON.StringFromObject(mi)
     else:
         return mc
 
@@ -783,7 +783,7 @@ def User():
 
     if os.environ['ENC_TYPE'] == 'json':
         Log.Debug("Returning JSON data")
-        return users_data
+        return JSON.StringFromObject(users_data)
 
     else:
         Log.Debug("Returning XML")
@@ -1219,7 +1219,7 @@ def build_tag_container(tag_type):
     headers = sort_headers(["Container-Start", "Container-Size"])
     records = query_tag_stats(selection, headers)
     if os.environ['ENC_TYPE'] == 'json':
-        return records
+        return JSON.StringFromObject(records)
     else:
         mc = MediaContainer()
         if records is not None:
