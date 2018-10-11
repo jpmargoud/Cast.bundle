@@ -1216,7 +1216,7 @@ def player_string(values):
 # These functions are for stats stuff
 def build_tag_container(tag_type):
     selection = tag_type
-    headers = sort_headers(["Container-Start", "Container-Size"])
+    headers = sort_headers(["Container-Start", "Container-Size", "Type"])
     records = query_tag_stats(selection, headers)
     if os.environ['ENC_TYPE'] == 'json':
         return JsonContainer(records)
@@ -1258,6 +1258,7 @@ def query_library_sizes():
 def query_tag_stats(selection, headers):
     container_size = int(headers.get("Container-Size") or DEFAULT_CONTAINER_SIZE)
     container_start = int(headers.get("Container-Start") or DEFAULT_CONTAINER_START)
+    type = headers.get("Type") or "All"
     Log.Debug("Container size is set to %s, start to %s" % (container_size, container_start))
     entitlements = get_entitlements()
     conn = fetch_cursor()
@@ -1285,19 +1286,19 @@ def query_tag_stats(selection, headers):
             tag_selection = "tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1"
 
         if selection == "actor":
-            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, mt.metadata_type, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 6"
 
         if selection == "director":
-            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, mt.metadata_type, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 4"
 
         if selection == "writer":
-            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, mt.metadata_type, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 5"
 
         if selection == "genre":
-            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, mt.metadata_type, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 1"
 
         tag_selection += " AND mt.library_section_id in %s" % entitlements
@@ -1308,10 +1309,11 @@ def query_tag_stats(selection, headers):
                         INNER JOIN metadata_items AS mt
                         ON taggings.metadata_item_id = mt.id
                         WHERE %s
-                        GROUP BY tags.tag,tags.tag_type
-                        ORDER BY Total
+                        GROUP BY tags.tag_type, mt.metadata_type, tags.tag
+                        ORDER BY tags.tag_type, mt.metadata_type, Total
                         desc;""" % (fetch_values, tag_selection)
         i = 0
+        Log.Debug("Query is '%s'" % query)
         container_max = int(container_start) + int(container_size)
         Log.Debug("Container max set to %s" % container_max)
         if selection == "all":
@@ -1346,17 +1348,21 @@ def query_tag_stats(selection, headers):
 
                 i += 1
         else:
-            for tag, ratingkey, count in cursor.execute(query):
+            for tag, ratingkey, meta_type, count in cursor.execute(query):
                 if i >= container_max:
                     break
                 if i < container_start:
                     Log.Debug("Count %s is less than start %s, skipping..." % (i, container_start))
                 else:
                     Log.Debug("Appending record %s" % i)
+                    if meta_type in META_TYPE_IDS:
+                        meta_type = META_TYPE_IDS[meta_type]
+
                     dicts = {
                         "title": tag,
                         "totalItems": count,
                         "ratingKey": ratingkey,
+                        "metaType": meta_type,
                         "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
                         "art": "/library/metadata/" + str(ratingkey) + "/art"
                     }
