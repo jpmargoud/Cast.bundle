@@ -1440,6 +1440,7 @@ def query_user_stats(headers):
 
         for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
                 byte_query, query_params):
+            Log.Debug("Looping for record, q1");
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
             meta_type = META_TYPE_IDS.get(meta_type) or meta_type
             dicts = {
@@ -1476,7 +1477,8 @@ def query_user_stats(headers):
         results = []
         for user_id, library_section, grandparent_title, parent_title, title, \
             rating_key, genre, country, year, \
-            viewed_at, meta_type, user_name, foo in cursor.execute(query, query_params):
+                viewed_at, meta_type, user_name, foo in cursor.execute(query, query_params):
+            Log.Debug("Looping for record, q2");
             meta_type = META_TYPE_IDS.get(meta_type) or meta_type
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
