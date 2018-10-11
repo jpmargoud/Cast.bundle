@@ -813,8 +813,8 @@ def User():
                 uc.set("lastSeen", last_active)
                 dp = FlexContainer("Devices", None, False)
                 chrome_data = None
-                for device in devices:
-                    if device["userName"] == user:
+                if user in devices:
+                    for device in devices[user]:
                         if device["deviceName"] in device_names:
                             if device["deviceName"] != "Chrome":
                                 Log.Debug("Found a device for %s" % user)
@@ -1437,9 +1437,15 @@ def query_user_stats(headers):
 
         Log.Debug("Query1) is '%s'" % byte_query)
         Log.Debug("Query selectors: %s" % JSON.StringFromObject(query_params))
+        results2 = {}
 
         for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
                 byte_query, query_params):
+
+            user_array = []
+            if user_name in results2:
+                user_array = results2[user_name]
+
             Log.Debug("Looping for record, q1");
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
             meta_type = META_TYPE_IDS.get(meta_type) or meta_type
@@ -1452,7 +1458,8 @@ def query_user_stats(headers):
                 "deviceId": device_id,
                 "bytes": data_bytes
             }
-            results2.append(dicts)
+            user_array.append(dicts)
+            results2[user_name] = user_array
         Log.Debug("Query1 completed.")
 
         query = """SELECT 
@@ -1474,13 +1481,16 @@ def query_user_stats(headers):
         Log.Debug("Query2 is '%s'" % query)
         Log.Debug("Query selectors: %s" % JSON.StringFromObject(query_params))
 
-        results = []
+        results = {}
         for user_id, library_section, grandparent_title, parent_title, title, \
             rating_key, genre, country, year, \
                 viewed_at, meta_type, user_name, foo in cursor.execute(query, query_params):
             Log.Debug("Looping for record, q2");
             meta_type = META_TYPE_IDS.get(meta_type) or meta_type
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+            user_array = []
+            if user_name in results:
+                user_array = results[user_name]
 
             dicts = {
                 "userId": user_id,
@@ -1501,8 +1511,8 @@ def query_user_stats(headers):
 
             if meta_type == "episode":
                 dicts["banner"] = "/library/metadata/" + str(rating_key) + "/banner/"
-
-            results.append(dicts)
+            user_array.append(dicts)
+            results[user_name] = user_array
 
         Log.Debug("Query2 completed")
 
@@ -1517,8 +1527,15 @@ def query_user_stats(headers):
                     GROUP BY account_id, device_id
                     """
 
-        device_results = []
+        Log.Debug("Executing query 3 '%s'" % query3)
+
+        device_results = {}
         for total_bytes, account_id, device_id, account_name, device_name, machine_identifier in cursor.execute(query3):
+            Log.Debug("looping for query 3")
+            user_array = []
+            if account_name in device_results:
+                user_array = device_results[account_name]
+
             device_dict = {
                 "userId": account_id,
                 "userName": account_name,
@@ -1527,25 +1544,27 @@ def query_user_stats(headers):
                 "machineIdentifier": machine_identifier,
                 "totalBytes": total_bytes
             }
-            device_results.append(device_dict)
+            user_array.append(device_dict)
+            device_results[account_name] = user_array
         close_connection(connection)
+        Log.Debug("Connection closed.")
         output = {}
-        for record in results:
-            record_date = str(record["lastViewedAt"])[:6]
-            record_user = record["userName"]
-            record_type = record["type"]
-            if record_user not in output:
-                output[record_user] = []
-            for check in results2:
-                check_date = str(check["lastViewedAt"])[:6]
-                check_user = check["userName"]
-                check_type = check["type"]
-                if check_date == record_date and check_user == record_user and check_type == record_type:
-                    for value in ["deviceName", "deviceId", "bytes"]:
-                        record[value] = check[value]
+        for record_user, datas in results.items():
+            user_array = []
 
-            output[record_user].append(record)
+            for data in datas:
+                record_date = str(data["lastViewedAt"])[:6]
+                record_type = data["type"]
 
+                if record_user in results2:
+                    for check in results2[record_user]:
+                        check_date = str(check["lastViewedAt"])[:6]
+                        check_type = check["type"]
+                        if check_date == record_date and check_type == record_type:
+                            for value in ["deviceName", "deviceId", "bytes"]:
+                                data[value] = check[value]
+                user_array.append(data)
+            output[record_user] = user_array
         return [output, device_results]
     else:
         Log.Error("DB Connection error!")
