@@ -31,7 +31,7 @@ import log_helper
 from CustomContainerOriginal import MediaContainer, DeviceContainer, CastContainer, ZipObject, StatusContainer, \
     MetaContainer
 from CustomContainer import AnyContainer
-from flex_container import FlexContainer
+from flex_container import FlexContainer, JsonContainer
 from lib import Plex
 
 UNICODE_MAP = {
@@ -690,7 +690,7 @@ def Library():
             mc.add(ac)
 
     if os.environ['ENC_TYPE'] == 'json':
-        return JSON.StringFromObject(mi)
+        return JsonContainer(mi)
     else:
         return mc
 
@@ -783,7 +783,7 @@ def User():
 
     if os.environ['ENC_TYPE'] == 'json':
         Log.Debug("Returning JSON data")
-        return JSON.StringFromObject(users_data)
+        return JsonContainer(users_data)
 
     else:
         Log.Debug("Returning XML")
@@ -1219,7 +1219,7 @@ def build_tag_container(tag_type):
     headers = sort_headers(["Container-Start", "Container-Size"])
     records = query_tag_stats(selection, headers)
     if os.environ['ENC_TYPE'] == 'json':
-        return JSON.StringFromObject(records)
+        return JsonContainer(records)
     else:
         mc = MediaContainer()
         if records is not None:
@@ -1387,7 +1387,6 @@ def query_user_stats(headers):
         entitlements = get_entitlements()
         selectors["sm.metadata_type"] = ["IN", query_types]
         selectors["count"] = ["""!=""", 0]
-        results2 = []
 
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")

@@ -1,3 +1,4 @@
+import json
 
 ObjectClass = getattr(getattr(Redirect, "_object_class"), "__bases__")[0]
 
@@ -90,3 +91,13 @@ class FlexContainer(ObjectClass):
             string = "<%s%s>%s</%s>\n" % (self_tag, attribute_string, child_string, self_tag)
 
         return string
+
+
+class JsonContainer(ObjectClass):
+    def __init__(self, data):
+        ObjectClass.__init__(self, "")
+        self.jsondata = json.dumps(data)
+        self.SetHeader("Content-Type", "application/json")
+
+    def Content(self):
+        return self.jsondata
