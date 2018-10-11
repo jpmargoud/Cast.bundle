@@ -1442,9 +1442,13 @@ def query_user_stats(headers):
         for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
                 byte_query, query_params):
 
-            user_array = []
+            user_array = {}
             if user_name in results2:
                 user_array = results2[user_name]
+
+            type_array = []
+            if meta_type in type_array:
+                type_array = type_array[meta_type]
 
             Log.Debug("Looping for record, q1");
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
@@ -1458,7 +1462,8 @@ def query_user_stats(headers):
                 "deviceId": device_id,
                 "bytes": data_bytes
             }
-            user_array.append(dicts)
+            type_array.append(dicts)
+            user_array[meta_type] = type_array
             results2[user_name] = user_array
         Log.Debug("Query1 completed.")
 
@@ -1551,18 +1556,18 @@ def query_user_stats(headers):
         output = {}
         for record_user, datas in results.items():
             user_array = []
-
             for data in datas:
                 record_date = str(data["lastViewedAt"])[:6]
                 record_type = data["type"]
 
                 if record_user in results2:
-                    for check in results2[record_user]:
-                        check_date = str(check["lastViewedAt"])[:6]
-                        check_type = check["type"]
-                        if check_date == record_date and check_type == record_type:
-                            for value in ["deviceName", "deviceId", "bytes"]:
-                                data[value] = check[value]
+                    if record_type in results2[record_user]:
+                        for check in results2[record_user][record_type]:
+                            check_date = str(check["lastViewedAt"])[:6]
+                            if check_date == record_date:
+                                for value in ["deviceName", "deviceId", "bytes"]:
+                                    data[value] = check[value]
+
                 user_array.append(data)
             output[record_user] = user_array
         return [output, device_results]
